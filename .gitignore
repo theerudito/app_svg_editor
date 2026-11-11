@@ -4,4 +4,4 @@ frontend/dist
 *.exe
 *.deb
 bin
-alt
+.atl

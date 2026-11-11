@@ -422,6 +422,7 @@ function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; size: number } | null>(null)
   const [copied, setCopied] = useState(false)
+  const hasContent = text.trim().length > 0
 
   const copySource = async () => {
     try {
@@ -455,6 +456,7 @@ function App() {
   }
 
   const saveFormat = async (format: string, selectedSize?: number) => {
+    if (!hasContent) return
     const size = selectedSize ?? contextMenu?.size ?? selectedExportSize
     if (!size) return
     setContextMenu(null)
@@ -488,7 +490,7 @@ function App() {
         </div>
         <section className="canvas-panel">
            <div className="canvas-stage"><div className="canvas-grid">{isSvg(text) ? <SvgEditorCanvas text={text} color={color} colorRevision={colorRevision} recentColors={recentColors} onChange={(value) => setText(value, false)} onColorChange={setColor} /> : <><div className="color-badge"><CustomColorPicker value={color} recentColors={recentColors} onChange={setColor} /><span className="color-value">{color}</span></div><canvas ref={canvasRef} className="main-canvas" /></>}</div></div>
-          <div className="preview-actions"><div className="size-grid">{exportSizes.map((size) => <div className={`size-card ${size === selectedExportSize ? 'selected' : ''}`} key={size} role="button" tabIndex={0} aria-pressed={size === selectedExportSize} aria-label={`Seleccionar resolución ${size} por ${size} píxeles`} onClick={() => { setSelectedExportSize(size); setContextMenu(null) }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedExportSize(size); setContextMenu(null) } }} onContextMenu={(event) => { event.preventDefault(); setSelectedExportSize(size); setContextMenu({ x: event.clientX, y: event.clientY, size }) }}><PreviewCanvas size={size} /><span>{size}px</span></div>)}</div><div className="save-actions"><button onClick={() => saveFormat('png')}>Guardar PNG</button><button onClick={() => saveFormat('ico')}>Guardar ICO</button></div></div>
+          <div className="preview-actions"><div className="size-grid">{exportSizes.map((size) => <div className={`size-card ${size === selectedExportSize ? 'selected' : ''}`} key={size} role="button" tabIndex={0} aria-pressed={size === selectedExportSize} aria-label={`Seleccionar resolución ${size} por ${size} píxeles`} onClick={() => { setSelectedExportSize(size); setContextMenu(null) }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedExportSize(size); setContextMenu(null) } }} onContextMenu={(event) => { event.preventDefault(); setSelectedExportSize(size); setContextMenu({ x: event.clientX, y: event.clientY, size }) }}><PreviewCanvas size={size} /><span>{size}px</span></div>)}</div><div className="save-actions"><button type="button" disabled={!hasContent} onClick={() => saveFormat('png')}>Guardar PNG</button><button type="button" disabled={!hasContent} onClick={() => saveFormat('ico')}>Guardar ICO</button></div></div>
         </section>
 
       </section>
