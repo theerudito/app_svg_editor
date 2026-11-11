@@ -3,7 +3,7 @@
 set -eu
 
 APP_NAME="SVG Editor"
-PACKAGE_NAME="svg_editor"
+PACKAGE_NAME="svg-editor"
 VERSION="${PACKAGE_VERSION:-1.0.0}"
 ARCH="amd64"
 
