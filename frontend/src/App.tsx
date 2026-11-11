@@ -299,6 +299,7 @@ function SvgEditorCanvas({ text, color, colorRevision, recentColors, onChange, o
   const [box, setBox] = useState({ left: 0, top: 0, width: 0, height: 0 })
   const selectedRef = useRef<SVGElement | null>(null)
   const selectionPathRef = useRef<number[] | null>(null)
+  const colorEffectMounted = useRef(false)
 
   const updateBox = (element: SVGElement | null) => {
     if (!element || !containerRef.current) return setBox({ left: 0, top: 0, width: 0, height: 0 })
@@ -348,6 +349,10 @@ function SvgEditorCanvas({ text, color, colorRevision, recentColors, onChange, o
 
   useEffect(() => {
     if (!svgHostRef.current) return
+    if (!colorEffectMounted.current) {
+      colorEffectMounted.current = true
+      return
+    }
     const svg = svgHostRef.current.querySelector('svg')
     if (!svg) return
     const active = selectedRef.current && svg.contains(selectedRef.current) ? selectedRef.current : null
@@ -367,7 +372,7 @@ function SvgEditorCanvas({ text, color, colorRevision, recentColors, onChange, o
     // The selected element is intentionally not a dependency: selecting another
     // element must not recolor it with the current color.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [color, colorRevision])
+  }, [colorRevision])
 
   const selectElement = (event: PointerEvent<HTMLDivElement>) => {
     const target = event.target as Element
