@@ -128,7 +128,7 @@ jobs:
           trap 'rm -f build/linux/build-deb-ci.sh' EXIT
           tr -d '\r' < build/linux/build-deb.sh > build/linux/build-deb-ci.sh
           PACKAGE_VERSION="${VERSION#v}" sh build/linux/build-deb-ci.sh
-          package="build/linux/svg_editor_${VERSION#v}_amd64.deb"
+          package="build/linux/svg-editor_${VERSION#v}_amd64.deb"
           test -f "$package"
           case "$package" in
             *"${VERSION#v}"*) ;;
@@ -139,13 +139,13 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: linux-package-${{ env.VERSION }}
-          path: build/linux/svg_editor_*.deb
+          path: build/linux/svg-editor_*.deb
           if-no-files-found: error
 
   macos:
     name: macOS disk image
     needs: validate
-    runs-on: macos-13
+    runs-on: macos-15-intel
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -215,7 +215,7 @@ jobs:
         run: |
           version="${VERSION#v}"
           test -f "artifacts/SVG-Editor-Setup-${version}.exe"
-          test -f "artifacts/svg_editor_${version}_amd64.deb"
+          test -f "artifacts/svg-editor_${version}_amd64.deb"
           test -f "artifacts/svg-editor-${version}.dmg"
           find artifacts -maxdepth 1 -type f -printf '%f\n' | sort
 
@@ -228,5 +228,5 @@ jobs:
             --title "SVG Editor $VERSION" \
             --generate-notes \
             artifacts/SVG-Editor-Setup-${VERSION#v}.exe \
-            artifacts/svg_editor_${VERSION#v}_amd64.deb \
+            artifacts/svg-editor_${VERSION#v}_amd64.deb \
             artifacts/svg-editor-${VERSION#v}.dmg
