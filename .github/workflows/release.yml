@@ -1,0 +1,232 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Existing release tag to build (for example, v0.1.0)'
+        required: true
+        default: 'v0.1.0'
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  NODE_OPTIONS: --max-old-space-size=4096
+  VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+
+jobs:
+  validate:
+    name: Validate release version
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Validate version format
+        shell: bash
+        run: |
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid release version: $VERSION"
+            exit 1
+          fi
+
+  windows:
+    name: Windows installer
+    needs: validate
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Wails CLI
+        shell: pwsh
+        run: |
+          go install github.com/wailsapp/wails/v2/cmd/wails@v2.16.0
+          "$(go env GOPATH)\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Build Windows application
+        shell: pwsh
+        run: wails build
+
+      - name: Build versioned Inno Setup installer
+        shell: pwsh
+        run: |
+          $version = $env:VERSION.TrimStart('v')
+          $source = 'build/windows/installer.iss'
+          $temporary = 'build/windows/installer-ci.iss'
+          $content = Get-Content -Path $source -Raw
+          $content = $content -replace '#define MyAppVersion ".*"', ('#define MyAppVersion "' + $version + '"')
+          [System.IO.File]::WriteAllText($temporary, $content, (New-Object System.Text.UTF8Encoding($false)))
+
+          try {
+            & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" $temporary
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } finally {
+            Remove-Item -Path $temporary -Force -ErrorAction SilentlyContinue
+          }
+
+          $installer = "build/windows/SVG-Editor-Setup-$version.exe"
+          if (-not (Test-Path $installer)) {
+            throw "Expected installer was not created: $installer"
+          }
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer-${{ env.VERSION }}
+          path: build/windows/SVG-Editor-Setup-*.exe
+          if-no-files-found: error
+
+  linux:
+    name: Debian package
+    needs: validate
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Wails CLI
+        shell: bash
+        run: |
+          go install github.com/wailsapp/wails/v2/cmd/wails@v2.16.0
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Build Debian package with the existing script
+        shell: bash
+        run: |
+          trap 'rm -f build/linux/build-deb-ci.sh' EXIT
+          tr -d '\r' < build/linux/build-deb.sh > build/linux/build-deb-ci.sh
+          PACKAGE_VERSION="${VERSION#v}" sh build/linux/build-deb-ci.sh
+          package="build/linux/svg_editor_${VERSION#v}_amd64.deb"
+          test -f "$package"
+          case "$package" in
+            *"${VERSION#v}"*) ;;
+            *) echo "Package name does not include the version: $package"; exit 1 ;;
+          esac
+
+      - name: Upload Debian package
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-package-${{ env.VERSION }}
+          path: build/linux/svg_editor_*.deb
+          if-no-files-found: error
+
+  macos:
+    name: macOS disk image
+    needs: validate
+    runs-on: macos-13
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Wails CLI
+        shell: bash
+        run: |
+          go install github.com/wailsapp/wails/v2/cmd/wails@v2.16.0
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Build macOS application bundle
+        shell: bash
+        run: |
+          wails build
+          test -d build/bin/svg_editor.app
+
+      - name: Create versioned DMG
+        shell: bash
+        run: |
+          version="${VERSION#v}"
+          dmg="build/bin/svg-editor-${version}.dmg"
+          hdiutil create \
+            -volname "SVG Editor ${version}" \
+            -srcfolder build/bin/svg_editor.app \
+            -ov \
+            -format UDZO \
+            "$dmg"
+          test -f "$dmg"
+          case "$dmg" in
+            *"$version"*) ;;
+            *) echo "DMG name does not include the version: $dmg"; exit 1 ;;
+          esac
+
+      - name: Upload macOS disk image
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-disk-image-${{ env.VERSION }}
+          path: build/bin/svg-editor-*.dmg
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: [windows, linux, macos]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: '*-${{ env.VERSION }}'
+          path: artifacts
+          merge-multiple: true
+
+      - name: Verify release filenames
+        shell: bash
+        run: |
+          version="${VERSION#v}"
+          test -f "artifacts/SVG-Editor-Setup-${version}.exe"
+          test -f "artifacts/svg_editor_${version}_amd64.deb"
+          test -f "artifacts/svg-editor-${version}.dmg"
+          find artifacts -maxdepth 1 -type f -printf '%f\n' | sort
+
+      - name: Publish release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$VERSION" \
+            --verify-tag \
+            --title "SVG Editor $VERSION" \
+            --generate-notes \
+            artifacts/SVG-Editor-Setup-${VERSION#v}.exe \
+            artifacts/svg_editor_${VERSION#v}_amd64.deb \
+            artifacts/svg-editor-${VERSION#v}.dmg
